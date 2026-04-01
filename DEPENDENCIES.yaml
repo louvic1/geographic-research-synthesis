@@ -1,0 +1,77 @@
+# DEPENDENCIES.yaml
+# Declares which skills this system depends on and how they're bundled for export.
+
+system_name: system-1-research-synthesis-system
+system_version: 1.0
+
+description: |
+  Full AI research pipeline that synthesizes academic literature, analyzes domains,
+  maps intellectual debates, scouts open data, writes scientific reports, and
+  renders professional PDFs.
+
+bundled_skills:
+  # Phase 1: Research gathering
+  - name: notebooklm-research-skill
+    path: .system/skills/notebooklm-research-skill
+    purpose: "Find and aggregate academic sources from NotebookLM + web"
+    exports: [main.py, SKILL.md, prompts/]
+
+  # Phase 2: Domain analysis
+  - name: domain-analysis-skill
+    path: .system/skills/domain-analysis-skill
+    purpose: "Classify sources by domain and extract key insights in parallel"
+    exports: [main.py, SKILL.md, agents/]
+
+  # Phase 3: Debate mapping
+  - name: debate-generation-skill
+    path: .system/skills/debate-generation-skill
+    purpose: "Map intellectual landscape: perspectives, contradictions, gaps"
+    exports: [main.py, SKILL.md]
+
+  # Phase 4: Data scouting (chart-skill and map-skill are internal deps of data-scout-skill)
+  - name: chart-skill
+    path: .system/skills/chart-skill
+    purpose: "Fetch World Bank/NASA data + render publication-quality charts (used by data-scout-skill)"
+    exports: [main.py, SKILL.md]
+
+  - name: map-skill
+    path: .system/skills/map-skill
+    purpose: "Render point maps, choropleths, heatmaps from geographic data (used by data-scout-skill)"
+    exports: [main.py, SKILL.md]
+
+  - name: data-scout-skill
+    path: .system/skills/data-scout-skill
+    purpose: "Hunt open data (GBIF, World Bank, FAOSTAT, NASA) + render figures"
+    exports: [main.py, SKILL.md, prompts/]
+
+  # Phase 5: Text writing
+  - name: text-writing-skill
+    path: .system/skills/text-writing-skill
+    purpose: "Write scientific text in French with proper academic formatting"
+    exports: [main.py, SKILL.md]
+
+  # Phase 6: PDF assembly
+  - name: pdf-rendering-skill
+    path: .system/skills/pdf-rendering-skill
+    purpose: "Assemble all content into a professional, publication-ready PDF"
+    exports: [main.py, SKILL.md, templates/]
+
+shared_imports:
+  # Code shared across all systems
+  modules:
+    - path: ../../shared/
+      description: "Reusable agent base classes and utilities"
+
+pipeline_order:
+  1. notebooklm-research-skill     (research)
+  2. domain-analysis-skill          (classify)
+  3. debate-generation-skill        (map tensions)
+  4. data-scout-skill               (find data + viz)
+  5. text-writing-skill             (write report)
+  6. pdf-rendering-skill            (export PDF)
+
+notes: |
+  - When exporting this system to GitHub, all bundled_skills/ should be included
+  - The skill loader in main.py looks for skills in .system/skills/
+  - Local development uses .claude/skills/ (faster iteration, all skills available)
+  - On GitHub, users import from .system/skills/ (no external dependencies)

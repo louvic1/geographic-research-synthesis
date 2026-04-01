@@ -1,0 +1,28 @@
+# system-1-research-synthesis-system — default configuration
+# All values can be overridden via CLI flags.
+
+# --- Research (skill 1) ---
+max_sources: 50           # total sources to find (Semantic Scholar + arXiv)
+min_year: 2015            # earliest publication year
+peer_reviewed_only: false # if true, skips arXiv preprints
+
+# --- Domain Analysis (skill 2 — replaces generic extraction) ---
+max_domain_sources: 20    # how many sources to send to domain agents (top N by relevance)
+domain_agents:
+  - environmental
+  - social
+  - economic
+  - spatial
+
+# --- Debate (skill 3) ---
+n_perspectives: 3         # number of perspectives (2–5)
+
+# --- Report (skill 4) ---
+report_format: academic   # academic | article | brief
+
+# --- Map & Chart (skills 5a + 5b — run in parallel) ---
+map_formats:
+  - png
+  - html
+chart_formats:
+  - png
