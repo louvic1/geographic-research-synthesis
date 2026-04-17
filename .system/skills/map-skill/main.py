@@ -381,8 +381,8 @@ async def geocode_location(name: str, client: httpx.AsyncClient) -> Optional[tup
         results = resp.json()
         if results:
             return float(results[0]["lat"]), float(results[0]["lon"])
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[map:geocode] '{name}' failed: {type(e).__name__}: {e}")
     return None
 
 
@@ -750,10 +750,20 @@ async def render_heatmap(
                 transform=ccrs.PlateCarree(),
                 cmap="YlOrRd", alpha=0.72, zorder=3,
             )
+            # Repaint ocean + lakes + coastlines ABOVE KDE so density doesn't
+            # bleed onto water bodies (academic cartography convention).
+            import cartopy.feature as cfeature
+            ax.add_feature(cfeature.OCEAN.with_scale("50m"),
+                           facecolor="#D6EAF8", zorder=4, edgecolor="none")
+            ax.add_feature(cfeature.LAKES.with_scale("50m"),
+                           facecolor="#D6EAF8", edgecolor="#4BBCD6",
+                           linewidth=0.3, zorder=4)
+            ax.add_feature(cfeature.COASTLINE.with_scale("50m"),
+                           linewidth=0.6, edgecolor="#555555", zorder=5)
             ax.scatter(
                 lons, lats,
                 transform=ccrs.PlateCarree(),
-                s=4, c=PALETTE["primary"], alpha=0.25, zorder=4, edgecolors="none",
+                s=4, c=PALETTE["primary"], alpha=0.25, zorder=6, edgecolors="none",
             )
 
             cbar = plt.colorbar(im, ax=ax, shrink=0.55, pad=0.03, aspect=20)

@@ -469,9 +469,9 @@ Si non pertinent:
   "skip_reason": "Données trop éparses pour une visualisation cohérente"
 }}
 
-Note: pour scatter, chaque point a "x_label" et "y_label" distincts, et chaque élément de series est {{"label": "pays", "x": valeur_indicateur_1, "y": valeur_indicateur_2}}.
+Note: pour scatter, chaque élément de series représente UN point — {{"label": "pays", "x": valeur_indicateur_1, "y": valeur_indicateur_2}}. Toutes les observations sont agrégées en un seul nuage de points avec ligne de tendance OLS automatique.
 Note: pour histogram, une seule série avec tous les points dans "x".
-Note: pour heatmap_matrix, series est une matrice: {{"labels": ["ind1","ind2",...], "matrix": [[1.0, 0.8, ...], ...]}}.
+Note: pour heatmap_matrix, series est un dict: {{"labels": ["ind1","ind2",...], "matrix": [[1.0, 0.8, ...], ...]}}. Si series n'est pas un dict, les corrélations sont calculées automatiquement depuis les arrays "y" des séries.
 """
 
 
@@ -689,16 +689,44 @@ def render_chart(plan: dict, output_path: Path) -> Optional[Path]:
         w, h = 960, 460
 
         if chart_type == "scatter":
-            for i, s in enumerate(series):
-                color = SERIES_COLORS[i % len(SERIES_COLORS)]
-                fig.add_trace(go.Scatter(
-                    x=[s.get("x")], y=[s.get("y")],
-                    mode="markers",
-                    name=s.get("label", f"Pt {i+1}"),
-                    marker=dict(color=color, size=9, opacity=0.85,
-                                line=dict(width=0.5, color="white")),
-                    hovertemplate=f"{s.get('label','')}<br>x: %{{x:.2f}}<br>y: %{{y:.2f}}<extra></extra>",
-                ))
+            # Each element of `series` is ONE point (scalar x, y, label).
+            # Flatten into a single trace so the legend isn't one entry per point
+            # and so matplotlib/plotly can draw a real cloud + regression line.
+            xs_pts = [s.get("x") for s in series if s.get("x") is not None and s.get("y") is not None]
+            ys_pts = [s.get("y") for s in series if s.get("x") is not None and s.get("y") is not None]
+            labels_pts = [s.get("label", "") for s in series if s.get("x") is not None and s.get("y") is not None]
+            fig.add_trace(go.Scatter(
+                x=xs_pts, y=ys_pts,
+                mode="markers+text",
+                text=labels_pts,
+                textposition="top center",
+                textfont=dict(size=8, color=PALETTE["text"]),
+                name="Observations",
+                marker=dict(color=SERIES_COLORS[0], size=10, opacity=0.82,
+                            line=dict(width=0.6, color="white")),
+                hovertemplate="%{text}<br>x: %{x:.2f}<br>y: %{y:.2f}<extra></extra>",
+                showlegend=False,
+            ))
+            # OLS regression line if ≥3 points
+            if len(xs_pts) >= 3:
+                try:
+                    import numpy as np
+                    xa = np.array(xs_pts, dtype=float); ya = np.array(ys_pts, dtype=float)
+                    slope, intercept = np.polyfit(xa, ya, 1)
+                    x_line = np.linspace(xa.min(), xa.max(), 50)
+                    y_line = slope * x_line + intercept
+                    ss_res = np.sum((ya - (slope * xa + intercept)) ** 2)
+                    ss_tot = np.sum((ya - ya.mean()) ** 2)
+                    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+                    fig.add_trace(go.Scatter(
+                        x=x_line.tolist(), y=y_line.tolist(),
+                        mode="lines",
+                        name=f"Tendance (R² = {r2:.2f})",
+                        line=dict(color=PALETTE["accent"], width=2, dash="dash"),
+                        hoverinfo="skip",
+                    ))
+                except Exception as e:
+                    print(f"[chart:render] scatter regression skipped: {type(e).__name__}: {e}")
         else:
             for i, s in enumerate(series):
                 color = SERIES_COLORS[i % len(SERIES_COLORS)]
@@ -896,20 +924,33 @@ def _render_seaborn(plan: dict, output_path: Path) -> Optional[Path]:
         sns.set_theme(style="whitegrid", palette=SERIES_COLORS[:len(series) or 1])
 
         if chart_type == "heatmap_matrix":
-            labels = plan.get("labels", [s.get("label", f"V{i}") for i, s in enumerate(series)])
-            matrix = plan.get("matrix")
-            if not matrix:
-                # Build correlation matrix from series data
-                data_dict = {}
-                for s in series:
-                    if s.get("x") and s.get("y"):
-                        data_dict[s["label"]] = s["y"]
+            # PLAN_PROMPT says: series = {"labels": [...], "matrix": [[...]]} (dict form).
+            # Also accept top-level plan.labels/plan.matrix, or fall back to correlating
+            # a list-of-series by their y arrays.
+            labels = None
+            matrix = None
+            if isinstance(series, dict):
+                labels = series.get("labels")
+                matrix = series.get("matrix")
+            if labels is None:
+                labels = plan.get("labels")
+            if matrix is None:
+                matrix = plan.get("matrix")
+
+            if matrix and labels:
+                matrix_df = pd.DataFrame(matrix, index=labels, columns=labels)
+            else:
+                # Correlation fallback from list of series
+                seq = series if isinstance(series, list) else []
+                data_dict = {s.get("label", f"V{i}"): s.get("y")
+                             for i, s in enumerate(seq)
+                             if s.get("y")}
                 if not data_dict:
+                    print("[chart:render] heatmap_matrix: no labels/matrix and no correlatable series")
                     return None
                 df = pd.DataFrame(data_dict)
                 matrix_df = df.corr()
-            else:
-                matrix_df = pd.DataFrame(matrix, index=labels, columns=labels)
+                labels = list(matrix_df.columns)
 
             fig, ax = plt.subplots(figsize=(max(6, len(labels)), max(5, len(labels) - 1)))
             sns.heatmap(
@@ -979,18 +1020,41 @@ def _render_matplotlib(plan: dict, output_path: Path) -> Optional[Path]:
         apply_pub_style()
         fig, ax = plt.subplots(figsize=(11, 5))
 
-        for i, s in enumerate(series):
-            color = SERIES_COLORS[i % len(SERIES_COLORS)]
-            xs = s.get("x", [])
-            ys = s.get("y", [])
-            label = s.get("label", f"Série {i+1}")
-            if chart_type in ("line_chart",):
-                ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=4, label=label)
-            elif chart_type in ("bar_chart", "grouped_bar"):
-                ax.bar(xs, ys, label=label, color=color, alpha=0.85)
-            elif chart_type == "scatter":
-                ax.scatter([s.get("x")], [s.get("y")], color=color, s=80, label=label, alpha=0.85,
-                           edgecolors="white", linewidths=0.5)
+        if chart_type == "scatter":
+            # Flatten all series entries into a single point cloud (same fix as Plotly path).
+            xs_pts = [s.get("x") for s in series if s.get("x") is not None and s.get("y") is not None]
+            ys_pts = [s.get("y") for s in series if s.get("x") is not None and s.get("y") is not None]
+            labels_pts = [s.get("label", "") for s in series if s.get("x") is not None and s.get("y") is not None]
+            ax.scatter(xs_pts, ys_pts, color=SERIES_COLORS[0], s=70, alpha=0.82,
+                       edgecolors="white", linewidths=0.6)
+            for xi, yi, li in zip(xs_pts, ys_pts, labels_pts):
+                if li:
+                    ax.annotate(li, (xi, yi), fontsize=7, color=PALETTE["text"],
+                                xytext=(3, 3), textcoords="offset points")
+            if len(xs_pts) >= 3:
+                try:
+                    import numpy as np
+                    xa = np.array(xs_pts, dtype=float); ya = np.array(ys_pts, dtype=float)
+                    slope, intercept = np.polyfit(xa, ya, 1)
+                    x_line = np.linspace(xa.min(), xa.max(), 50)
+                    y_line = slope * x_line + intercept
+                    ss_res = np.sum((ya - (slope * xa + intercept)) ** 2)
+                    ss_tot = np.sum((ya - ya.mean()) ** 2)
+                    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+                    ax.plot(x_line, y_line, color=PALETTE["accent"], linewidth=1.8,
+                            linestyle="--", label=f"Tendance (R² = {r2:.2f})")
+                except Exception as e:
+                    print(f"[chart:render] scatter regression (mpl) skipped: {type(e).__name__}: {e}")
+        else:
+            for i, s in enumerate(series):
+                color = SERIES_COLORS[i % len(SERIES_COLORS)]
+                xs = s.get("x", [])
+                ys = s.get("y", [])
+                label = s.get("label", f"Série {i+1}")
+                if chart_type in ("line_chart",):
+                    ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=4, label=label)
+                elif chart_type in ("bar_chart", "grouped_bar"):
+                    ax.bar(xs, ys, label=label, color=color, alpha=0.85)
 
         ax.set_xlabel(x_label, fontsize=10)
         ax.set_ylabel(y_label, fontsize=10)

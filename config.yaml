@@ -20,7 +20,9 @@ n_perspectives: 3         # number of perspectives (2–5)
 # --- Report (skill 4) ---
 report_format: academic   # academic | article | brief
 
-# --- Map & Chart (skills 5a + 5b — run in parallel) ---
+# --- Visualization (skill 4 — idea-first pipeline) ---
+viz_max_ideas: 3          # how many viz ideas to brainstorm (2-3)
+viz_render_engine: sandbox # sandbox (Claude code execution) | local (legacy)
 map_formats:
   - png
   - html

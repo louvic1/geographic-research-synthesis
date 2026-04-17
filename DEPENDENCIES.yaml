@@ -2,12 +2,12 @@
 # Declares which skills this system depends on and how they're bundled for export.
 
 system_name: system-1-research-synthesis-system
-system_version: 1.0
+system_version: 2.0
 
 description: |
   Full AI research pipeline that synthesizes academic literature, analyzes domains,
-  maps intellectual debates, scouts open data, writes scientific reports, and
-  renders professional PDFs.
+  maps intellectual debates, generates idea-first visualizations via Claude sandbox,
+  writes scientific reports, and renders professional PDFs.
 
 bundled_skills:
   # Phase 1: Research gathering
@@ -28,21 +28,45 @@ bundled_skills:
     purpose: "Map intellectual landscape: perspectives, contradictions, gaps"
     exports: [main.py, SKILL.md]
 
-  # Phase 4: Data scouting (chart-skill and map-skill are internal deps of data-scout-skill)
+  # Phase 4: Idea-first visualization pipeline
+  - name: viz-ideation-skill
+    path: .system/skills/viz-ideation-skill
+    purpose: "Brainstorm compelling visualizations for a research topic (idea-first)"
+    exports: [main.py, SKILL.md]
+
+  - name: viz-data-fetch-skill
+    path: .system/skills/viz-data-fetch-skill
+    purpose: "Fetch specific data from World Bank, GBIF, OWID, NASA for visualization ideas"
+    exports: [main.py, SKILL.md]
+
+  - name: viz-render-skill
+    path: .system/skills/viz-render-skill
+    purpose: "Render visualizations via Claude API code execution sandbox"
+    exports: [main.py, SKILL.md, data/]
+
+  - name: viz-orchestrator-skill
+    path: .system/skills/viz-orchestrator-skill
+    purpose: "Coordinate viz ideation → data fetch → render; produce scout.json-compatible output"
+    exports: [main.py, SKILL.md]
+
+  # Phase 4 LEGACY (deprecated, kept for standalone use / backward compatibility)
   - name: chart-skill
     path: .system/skills/chart-skill
-    purpose: "Fetch World Bank/NASA data + render publication-quality charts (used by data-scout-skill)"
+    purpose: "[DEPRECATED] Legacy chart rendering — replaced by viz-render-skill"
     exports: [main.py, SKILL.md]
+    deprecated: true
 
   - name: map-skill
     path: .system/skills/map-skill
-    purpose: "Render point maps, choropleths, heatmaps from geographic data (used by data-scout-skill)"
+    purpose: "[DEPRECATED] Legacy map rendering — replaced by viz-render-skill"
     exports: [main.py, SKILL.md]
+    deprecated: true
 
   - name: data-scout-skill
     path: .system/skills/data-scout-skill
-    purpose: "Hunt open data (GBIF, World Bank, FAOSTAT, NASA) + render figures"
+    purpose: "[DEPRECATED] Legacy data-first pipeline — replaced by viz-orchestrator-skill"
     exports: [main.py, SKILL.md, prompts/]
+    deprecated: true
 
   # Phase 5: Text writing
   - name: text-writing-skill
@@ -57,7 +81,6 @@ bundled_skills:
     exports: [main.py, SKILL.md, templates/]
 
 shared_imports:
-  # Code shared across all systems
   modules:
     - path: ../../shared/
       description: "Reusable agent base classes and utilities"
@@ -66,12 +89,13 @@ pipeline_order:
   1. notebooklm-research-skill     (research)
   2. domain-analysis-skill          (classify)
   3. debate-generation-skill        (map tensions)
-  4. data-scout-skill               (find data + viz)
+  4. viz-orchestrator-skill          (ideate + fetch + render)
   5. text-writing-skill             (write report)
   6. pdf-rendering-skill            (export PDF)
 
 notes: |
-  - When exporting this system to GitHub, all bundled_skills/ should be included
+  - v2.0: Replaced data-scout-skill with idea-first viz pipeline (4 new skills)
+  - Visualization uses Claude API code_execution for rendering (sandbox)
+  - Legacy skills (chart-skill, map-skill, data-scout-skill) kept for standalone use
   - The skill loader in main.py looks for skills in .system/skills/
-  - Local development uses .claude/skills/ (faster iteration, all skills available)
-  - On GitHub, users import from .system/skills/ (no external dependencies)
+  - Local development uses .claude/skills/ (faster iteration)

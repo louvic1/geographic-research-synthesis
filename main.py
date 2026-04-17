@@ -89,7 +89,7 @@ def load_skill(skill_dir_name: str, function_name: str):
 run_research       = load_skill("notebooklm-research-skill", "run_research")
 run_domain_analysis = load_skill("domain-analysis-skill",    "run_domain_analysis")
 run_debate         = load_skill("debate-generation-skill",   "run_debate")
-run_data_scout     = load_skill("data-scout-skill",          "run_data_scout")
+run_viz_pipeline   = load_skill("viz-orchestrator-skill",    "run_viz_pipeline")
 run_text_writing   = load_skill("text-writing-skill",        "run_text_writing")
 run_pdf_rendering  = load_skill("pdf-rendering-skill",       "run_pdf_rendering")
 
@@ -301,13 +301,13 @@ async def run_pipeline(
     # ------------------------------------------------------------------
     # Step 4: Data scout — hunt open data + render figures
     # ------------------------------------------------------------------
-    step(4, TOTAL_STEPS, "Hunting open data + generating figures (data-scout-skill)")
+    step(4, TOTAL_STEPS, "Idea-first visualization pipeline (viz-orchestrator)")
 
     scout_checkpoint = _load_if_done(fig_dir / "scout.json")
     if scout_checkpoint:
         chart_result, chart2_result, map_result = _scout_to_chart_map(scout_checkpoint)
     else:
-        scout_result = await run_data_scout(
+        scout_result = await run_viz_pipeline(
             topic=topic,
             output_dir=str(fig_dir),
             formats=config.get("map_formats", ["png", "html"]),

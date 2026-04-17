@@ -44,11 +44,48 @@ FIGURE_TARGETS: dict[str, list[str]] = {
     "timeline": ["introduction", "contexte", "revue"],
 }
 
+# Generic fallbacks used ONLY when a figure entry provides no metadata.
+# Callers should pass per-figure metadata (title, source, method, note) in figures.json:
+#   {"chart": {"png": "...", "title": "...", "source": "...", "method": "...", "note": "..."}}
 FIGURE_CAPTIONS: dict[str, str] = {
-    "chart":  "Figure {n} — Visualisation des données quantitatives (Banque mondiale / NASA POWER).",
-    "chart2": "Figure {n} — Analyse comparative des données (sources multiples).",
-    "map":    "Figure {n} — Cartographie de la couverture géographique des sources analysées.",
+    "chart":  "Figure {n} — Données quantitatives principales.",
+    "chart2": "Figure {n} — Analyse comparative.",
+    "map":    "Figure {n} — Carte thématique.",
+    "timeline": "Figure {n} — Chronologie.",
 }
+
+
+def _extract_figure_meta(fig_value) -> dict:
+    """Pull caption-relevant metadata from a figure value (dict or str)."""
+    if isinstance(fig_value, dict):
+        return {
+            "title":  fig_value.get("title")  or fig_value.get("caption"),
+            "source": fig_value.get("source"),
+            "method": fig_value.get("method"),
+            "note":   fig_value.get("note"),
+        }
+    return {"title": None, "source": None, "method": None, "note": None}
+
+
+def _build_caption(fig_key: str, n: int, meta: dict) -> str:
+    """Build a rich caption: main title + 'Source : / Méthode : / Note :' footer."""
+    if meta.get("title"):
+        main = f"Figure {n} — {meta['title']}"
+    else:
+        tpl = FIGURE_CAPTIONS.get(fig_key, f"Figure {{n}} — {fig_key.replace('_', ' ').title()}")
+        main = tpl.format(n=n)
+
+    footer_parts = []
+    if meta.get("source"):
+        footer_parts.append(f"Source : {meta['source']}")
+    if meta.get("method"):
+        footer_parts.append(f"Méthode : {meta['method']}")
+    if meta.get("note"):
+        footer_parts.append(f"Note : {meta['note']}")
+
+    if footer_parts:
+        return main + "<br><span class=\"figure-meta\">" + " · ".join(footer_parts) + "</span>"
+    return main
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +153,8 @@ def _png_to_base64(path_str: str) -> Optional[str]:
     try:
         data = path.read_bytes()
         return "data:image/png;base64," + base64.b64encode(data).decode()
-    except Exception:
+    except Exception as e:
+        print(f"[pdf] failed to embed {path.name}: {type(e).__name__}: {e}")
         return None
 
 
@@ -150,8 +188,8 @@ def _inject_figures_inline(body_html: str, figures: dict) -> str:
         if not b64:
             continue
 
-        caption_tpl = FIGURE_CAPTIONS.get(fig_key, f"Figure {{n}} — {fig_key}.")
-        caption = caption_tpl.format(n=fig_num)
+        meta = _extract_figure_meta(fig_value)
+        caption = _build_caption(fig_key, fig_num, meta)
         fig_html = _make_figure_html(b64, caption)
         fig_num += 1
 
